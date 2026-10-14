@@ -31,6 +31,8 @@ Because fancy-cat provides sensible defaults, you only need to specify the optio
   "KeyMap": {
     "next": { "key": "n" },
     "prev": { "key": "p" },
+    "first_page": { "key": "g" },
+    "last_page": { "key": "g", "modifiers": [ "shift" ] },
     "scroll_up": { "key": "k" },
     "scroll_up_mult": { "key": "k", "modifiers": [ "shift" ] },
     "scroll_down": { "key": "j" },
@@ -125,6 +127,8 @@ The `KeyMap` section defines keybindings for various actions.
 | :--- | :--- |
 | `next` | Go to the next page |
 | `prev` | Go to the previous page |
+| `first_page` | Pressed twice (`gg`), go to the first page |
+| `last_page` | Go to the last page (`G`) |
 | `scroll_up` | Move the viewport up |
 | `scroll_up_mult` | Multiplied `scroll_up` |
 | `scroll_down` | Move the viewport down |
@@ -146,6 +150,8 @@ The `KeyMap` section defines keybindings for various actions.
 | `execute_command` | Execute the entered command |
 | `history_back` | Go back one command in history |
 | `history_forward` | Go forward one command in history |
+
+As in Vim, typing a page number before `first_page` or `last_page` goes to that page: `12G` and `12gg` both go to page 12. Digits typed in view mode are treated as this count.
 
 ### Keybindings
 

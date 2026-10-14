@@ -5,6 +5,8 @@ const vaxis = @import("vaxis");
 pub const KeyMap = struct {
     next: vaxis.Key = .{ .codepoint = 'n' },
     prev: vaxis.Key = .{ .codepoint = 'p' },
+    first_page: vaxis.Key = .{ .codepoint = 'g' },
+    last_page: vaxis.Key = .{ .codepoint = 'g', .mods = .{ .shift = true } },
     scroll_up: vaxis.Key = .{ .codepoint = 'k' },
     scroll_up_mult: vaxis.Key = .{ .codepoint = 'k', .mods = .{ .shift = true } },
     scroll_down: vaxis.Key = .{ .codepoint = 'j' },

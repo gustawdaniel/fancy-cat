@@ -5,6 +5,10 @@ const CommandMode = @import("./CommandMode.zig");
 const Config = @import("../config/Config.zig");
 
 context: *Context,
+// vim-style count typed before a page jump, e.g. 12G
+count: u16 = 0,
+// first key of `first_page` was pressed, waiting for the second
+pending_first_page: bool = false,
 
 pub const KeyAction = struct {
     codepoint: u21,
@@ -18,7 +22,46 @@ pub fn init(context: *Context) Self {
     };
 }
 
+fn goToPage(self: *Self, page: u16) void {
+    if (self.context.document_handler.goToPage(page)) self.context.resetCurrentPage();
+}
+
+// Vim-style page jumps: `gg` (first page), `G` (last page), and a count
+// before either, e.g. `12G` or `12gg`, to go to that page.
+// Returns true when the key was consumed.
+fn handlePageJump(self: *Self, key: vaxis.Key, km: Config.KeyMap) bool {
+    if (key.codepoint >= '0' and key.codepoint <= '9' and key.matches(key.codepoint, .{})) {
+        self.count = self.count *| 10 +| @as(u16, @intCast(key.codepoint - '0'));
+        self.pending_first_page = false;
+        return true;
+    }
+
+    if (key.matches(km.last_page.codepoint, km.last_page.mods)) {
+        self.goToPage(if (self.count > 0) self.count else self.context.document_handler.getTotalPages());
+        self.count = 0;
+        self.pending_first_page = false;
+        return true;
+    }
+
+    if (key.matches(km.first_page.codepoint, km.first_page.mods)) {
+        if (self.pending_first_page) {
+            self.goToPage(if (self.count > 0) self.count else 1);
+            self.count = 0;
+            self.pending_first_page = false;
+        } else {
+            self.pending_first_page = true;
+        }
+        return true;
+    }
+
+    self.count = 0;
+    self.pending_first_page = false;
+    return false;
+}
+
 pub fn handleKeyStroke(self: *Self, key: vaxis.Key, km: Config.KeyMap) !void {
+    if (self.handlePageJump(key, km)) return;
+
     // O(n) but n is small
     // Centralized key handling
     const allocator = self.context.arena.allocator();
