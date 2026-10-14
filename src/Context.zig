@@ -288,7 +288,7 @@ pub const Context = struct {
             encoded_image.base64,
             encoded_image.width,
             encoded_image.height,
-            .rgb,
+            if (encoded_image.alpha) .rgba else .rgb,
         );
 
         if (self.should_check_cache) {

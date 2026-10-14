@@ -1,5 +1,5 @@
 // Types used in document handlers
-pub const EncodedImage = struct { base64: []const u8, width: u16, height: u16 };
+pub const EncodedImage = struct { base64: []const u8, width: u16, height: u16, alpha: bool };
 
 pub const ScrollDirection = enum { Up, Down, Left, Right };
 

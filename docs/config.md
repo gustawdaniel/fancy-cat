@@ -62,6 +62,7 @@ Because fancy-cat provides sensible defaults, you only need to specify the optio
     "colorize": false,
     "white": "#000000",
     "black": "#ffffff",
+    "background": "#ffffff",
     "size": 1.0,
     "zoom_step": 1.25,
     "zoom_mult": 2.0,
@@ -73,7 +74,8 @@ Because fancy-cat provides sensible defaults, you only need to specify the optio
     "detect_dpi": true,
     "dpi": 96.0,
     "history": 1000,
-    "progress_bar": false
+    "progress_bar": false,
+    "transparent": false
   },
   "StatusBar": {
     "enabled": true,
@@ -220,6 +222,7 @@ The `General` section includes various display and timing settings.
 | `colorize` | Boolean | Enables color replacement on startup |
 | `white` | [Color](#color) | Replacement color for white |
 | `black` | [Color](#color) | Replacement color for black |
+| `background` | [Color](#color) | Page background color when color replacement is off |
 | `size` | Float | Initial zoom level multiplier (`1.0` fits the full height) |
 | `zoom_step` | Float | Zoom multiplier per keystroke |
 | `zoom_mult` | Float | Extra zoom multiplier for multiplied zoom actions |
@@ -232,9 +235,12 @@ The `General` section includes various display and timing settings.
 | `timeout` | Float (seconds) | Maximum time to keep retrying before giving up on loading a document or rendering a page |
 | `history` | Integer | Maximum number of entries in command history |
 | `progress_bar` | Boolean | Use graphical progress bar for reload indicator (requires a terminal with OSC 9;4 support) |
+| `transparent` | Boolean | When color replacement is on, render the page background as transparent, so the terminal background (including its opacity) shows through |
 
 >[!TIP]
 >The color replacement feature works by replacing white and black with custom colors, which also affects the full color range depending on contrast. By default, `white` is set to black (`#000000`) and `black` is set to white (`#ffffff`). For a seamless look, try setting `white` to match your terminal’s background color and `black` to match the foreground (text) color.
+>
+>With `transparent` enabled, color replacement leaves the unpainted areas of the page transparent, so they show the terminal background, including a translucent one. Set `black` to your foreground color to recolor the text. Without color replacement, the page keeps the opaque `background` color, so dark text stays readable on a dark terminal. Documents that paint an explicit white background stay opaque.
 
 ### Color
 

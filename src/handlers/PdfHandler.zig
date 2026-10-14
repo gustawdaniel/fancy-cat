@@ -186,9 +186,25 @@ pub fn renderPage(
             @intFromFloat(view_width),
             @intFromFloat(view_height),
         );
-        const pix = c.fz_new_pixmap_with_bbox(self.ctx, c.fz_device_rgb(self.ctx), bbox, null, 0);
+        // transparency only makes sense with light text from colorize; dark
+        // text keeps an opaque background so it stays readable
+        const colorize = self.config.general.colorize;
+        const alpha = colorize and self.config.general.transparent;
+        const pix = c.fz_new_pixmap_with_bbox(self.ctx, c.fz_device_rgb(self.ctx), bbox, null, @intFromBool(alpha));
         defer c.fz_drop_pixmap(self.ctx, pix);
-        c.fz_clear_pixmap_with_value(self.ctx, pix, 0xFF);
+        if (alpha) {
+            c.fz_clear_pixmap(self.ctx, pix);
+        } else if (colorize or self.config.general.background == 0xffffff) {
+            c.fz_clear_pixmap_with_value(self.ctx, pix, 0xFF);
+        } else {
+            const bg = self.config.general.background;
+            var color = [3]f32{
+                @as(f32, @floatFromInt((bg >> 16) & 0xff)) / 255.0,
+                @as(f32, @floatFromInt((bg >> 8) & 0xff)) / 255.0,
+                @as(f32, @floatFromInt(bg & 0xff)) / 255.0,
+            };
+            c.fz_fill_pixmap_with_color(self.ctx, pix, c.fz_device_rgb(self.ctx), &color, c.fz_default_color_params);
+        }
 
         var ctm = c.fz_scale(self.active_zoom, self.active_zoom);
         ctm = c.fz_pre_translate(ctm, self.x_offset - self.x_center, self.y_offset - self.y_center);
@@ -198,16 +214,21 @@ pub fn renderPage(
         c.fz_run_page(self.ctx, page, dev, c.fz_identity, null);
         c.fz_close_device(self.ctx, dev);
 
-        if (self.config.general.colorize) {
-            c.fz_tint_pixmap(self.ctx, pix, self.config.general.black, self.config.general.white);
-        }
-
         const width = @as(usize, @intCast(@abs(bbox.x1)));
         const height = @as(usize, @intCast(@abs(bbox.y1)));
         const samples = c.fz_pixmap_samples(self.ctx, pix);
+        const components: usize = if (alpha) 4 else 3;
+        const sample_count = width * height * components;
+
+        // MuPDF renders premultiplied alpha, while fz_tint_pixmap and the
+        // kitty protocol both expect straight alpha
+        if (alpha) unpremultiply(samples[0..sample_count]);
+
+        if (colorize) {
+            c.fz_tint_pixmap(self.ctx, pix, self.config.general.black, self.config.general.white);
+        }
 
         const base64Encoder = fastb64z.standard.Encoder;
-        const sample_count = width * height * 3;
 
         const b64_buf = try self.allocator.alloc(u8, base64Encoder.calcSize(sample_count));
         const encoded = base64Encoder.encode(b64_buf, samples[0..sample_count]);
@@ -216,7 +237,19 @@ pub fn renderPage(
             .base64 = encoded,
             .width = @as(u16, @intCast(width)),
             .height = @as(u16, @intCast(height)),
+            .alpha = alpha,
         };
+    }
+}
+
+fn unpremultiply(samples: []u8) void {
+    var i: usize = 0;
+    while (i + 3 < samples.len) : (i += 4) {
+        const a: u16 = samples[i + 3];
+        if (a == 0 or a == 255) continue;
+        inline for (0..3) |j| {
+            samples[i + j] = @intCast(@min(255, (@as(u16, samples[i + j]) * 255 + a / 2) / a));
+        }
     }
 }
 

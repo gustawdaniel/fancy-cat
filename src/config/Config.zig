@@ -82,6 +82,8 @@ pub const General = struct {
     colorize: bool = false,
     white: i32 = 0x000000,
     black: i32 = 0xffffff,
+    // page background when colorize is off
+    background: i32 = 0xffffff,
     // size of the pdf
     // 1 is the whole window
     size: f32 = 1.0,
@@ -103,6 +105,8 @@ pub const General = struct {
     history: u32 = 1000,
     // terminal gui
     progress_bar: bool = false,
+    // render the page background as transparent when colorize is on
+    transparent: bool = false,
 
     pub fn parse(val: std.json.Value, allocator: std.mem.Allocator) General {
         var general = General{};
@@ -125,6 +129,14 @@ pub const General = struct {
             }
         }
 
+        if (val.object.get("background")) |background| {
+            if (parseRGB(background, allocator)) |rgb| {
+                general.background = @intCast(
+                    (@as(u32, rgb[0]) << 16) | (@as(u32, rgb[1]) << 8) | @as(u32, rgb[2]),
+                );
+            }
+        }
+
         general.size = parseType(f32, val.object, "size", allocator, general.size);
         general.zoom_step = parseType(f32, val.object, "zoom_step", allocator, general.zoom_step);
         general.zoom_min = parseType(f32, val.object, "zoom_min", allocator, general.zoom_min);
@@ -137,6 +149,7 @@ pub const General = struct {
         general.dpi = parseType(f32, val.object, "dpi", allocator, general.dpi);
         general.history = parseType(u32, val.object, "history", allocator, general.history);
         general.progress_bar = parseType(bool, val.object, "progress_bar", allocator, general.progress_bar);
+        general.transparent = parseType(bool, val.object, "transparent", allocator, general.transparent);
 
         return general;
     }
