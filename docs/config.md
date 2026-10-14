@@ -58,6 +58,13 @@ Because fancy-cat provides sensible defaults, you only need to specify the optio
     "latency": 0.1,
     "reload_indicator_duration": 1.0
   },
+  "Mouse": {
+    "enabled": true,
+    "scroll_step": 0.15,
+    "gesture_timeout": 0.5,
+    "horizontal_threshold": 2,
+    "page_flip": false
+  },
   "General": {
     "colorize": false,
     "white": "#000000",
@@ -102,6 +109,7 @@ The rest of this reference provides detailed explanations for each configuration
     - [Keys](#keys)
     - [Modifiers](#modifiers)
 - [File Monitor](#file-monitor)
+- [Mouse](#mouse)
 - [General](#general)
   - [Color](#color)
   - [History](#history)
@@ -208,6 +216,22 @@ The `FileMonitor` section controls the automatic reloading feature, useful for l
 | `enabled` | Boolean | Enables file change detection and automatic reloading |
 | `latency` | Float (seconds) | The time interval between checking for changes |
 | `reload_indicator_duration` | Float (seconds) | How long the reload indicator remains visible (`0.0` disables it) |
+
+---
+
+## Mouse
+
+The `Mouse` section controls scrolling with a mouse wheel or a trackpad.
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `enabled` | Boolean | Enables scrolling with the mouse wheel or trackpad |
+| `scroll_step` | Float | Scroll distance per wheel event, as a multiple of `General.scroll_step` |
+| `gesture_timeout` | Float (seconds) | A pause longer than this between wheel events starts a new gesture |
+| `horizontal_threshold` | Integer | Horizontal wheel events in one direction needed to turn a page |
+| `page_flip` | Boolean | Swipe left for the next page and right for the previous one |
+
+Vertical wheel events scroll right away. With `page_flip` enabled, a gesture turns a page after `horizontal_threshold` horizontal events in one direction, unless it has already settled into vertical scrolling, so sideways wobble while scrolling does nothing. A swipe turns exactly one page, however long it lasts. The next page needs a new swipe, after a pause of at least `gesture_timeout`.
 
 ---
 

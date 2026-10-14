@@ -7,6 +7,7 @@ const Config = @import("config/Config.zig");
 const DocumentHandler = @import("handlers/DocumentHandler.zig");
 const Cache = @import("./Cache.zig");
 const ReloadIndicatorTimer = @import("services/ReloadIndicatorTimer.zig");
+const Gesture = @import("services/Gesture.zig");
 const History = @import("services/History.zig");
 
 pub const panic = vaxis.panic_handler;
@@ -44,6 +45,7 @@ pub const Context = struct {
     cache: Cache,
     should_check_cache: bool,
     reload_indicator_timer: ReloadIndicatorTimer,
+    gesture: Gesture,
     current_reload_indicator_state: ReloadIndicatorState,
     reload_indicator_active: bool,
     buf: []u8,
@@ -94,6 +96,11 @@ pub const Context = struct {
             .cache = Cache.init(allocator, config, vx, &tty),
             .should_check_cache = config.cache.enabled,
             .reload_indicator_timer = reload_indicator_timer,
+            .gesture = Gesture.init(.{
+                .gesture_timeout_ms = @intFromFloat(config.mouse.gesture_timeout * std.time.ms_per_s),
+                .horizontal_threshold = config.mouse.horizontal_threshold,
+                .page_flip = config.mouse.page_flip,
+            }),
             .current_reload_indicator_state = .idle,
             .reload_indicator_active = false,
             .buf = buf,
@@ -226,10 +233,39 @@ pub const Context = struct {
         };
     }
 
+    fn handleWheel(self: *Self, mouse: vaxis.Mouse) void {
+        const wheel: Gesture.Wheel = switch (mouse.button) {
+            .wheel_up => .up,
+            .wheel_down => .down,
+            .wheel_left => .left,
+            .wheel_right => .right,
+            else => return,
+        };
+
+        const step = self.config.mouse.scroll_step;
+        switch (self.gesture.handle(wheel, std.time.milliTimestamp())) {
+            .none => return,
+            .scroll_up => self.document_handler.scroll(.Up, step),
+            .scroll_down => self.document_handler.scroll(.Down, step),
+            .next_page => {
+                if (self.document_handler.changePage(1)) self.resetCurrentPage();
+                return;
+            },
+            .prev_page => {
+                if (self.document_handler.changePage(-1)) self.resetCurrentPage();
+                return;
+            },
+        }
+        self.reload_page = true;
+    }
+
     pub fn update(self: *Self, event: Event) !void {
         switch (event) {
             .key_press => |key| try self.handleKeyStroke(key),
-            .mouse => |mouse| self.mouse = mouse,
+            .mouse => |mouse| {
+                self.mouse = mouse;
+                if (self.config.mouse.enabled) self.handleWheel(mouse);
+            },
             .winsize => |ws| {
                 try self.vx.resize(self.allocator, self.tty.writer(), ws);
                 self.cache.clear();

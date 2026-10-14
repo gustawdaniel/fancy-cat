@@ -78,6 +78,31 @@ pub const FileMonitor = struct {
     }
 };
 
+pub const Mouse = struct {
+    enabled: bool = true,
+    // multiplier of General.scroll_step per wheel event
+    scroll_step: f32 = 0.15,
+    // seconds without wheel events that end a gesture
+    gesture_timeout: f32 = 0.5,
+    // horizontal wheel events in one direction needed to turn a page
+    horizontal_threshold: u16 = 2,
+    // swipe left or right to turn one page
+    page_flip: bool = false,
+
+    pub fn parse(val: std.json.Value, allocator: std.mem.Allocator) Mouse {
+        var mouse = Mouse{};
+        if (val != .object) return mouse;
+
+        mouse.enabled = parseType(bool, val.object, "enabled", allocator, mouse.enabled);
+        mouse.scroll_step = parseType(f32, val.object, "scroll_step", allocator, mouse.scroll_step);
+        mouse.gesture_timeout = parseType(f32, val.object, "gesture_timeout", allocator, mouse.gesture_timeout);
+        mouse.horizontal_threshold = parseType(u16, val.object, "horizontal_threshold", allocator, mouse.horizontal_threshold);
+        mouse.page_flip = parseType(bool, val.object, "page_flip", allocator, mouse.page_flip);
+
+        return mouse;
+    }
+};
+
 pub const General = struct {
     colorize: bool = false,
     white: i32 = 0x000000,
@@ -230,6 +255,7 @@ arena: std.heap.ArenaAllocator,
 
 key_map: KeyMap = .{},
 file_monitor: FileMonitor = .{},
+mouse: Mouse = .{},
 general: General = .{},
 status_bar: StatusBar = .{},
 cache: Cache = .{},
@@ -274,6 +300,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
 
     if (parsed.value.object.get("KeyMap")) |key_map| self.key_map = KeyMap.parse(key_map, arena_allocator);
     if (parsed.value.object.get("FileMonitor")) |file_monitor| self.file_monitor = FileMonitor.parse(file_monitor, arena_allocator);
+    if (parsed.value.object.get("Mouse")) |mouse| self.mouse = Mouse.parse(mouse, arena_allocator);
     if (parsed.value.object.get("General")) |general| self.general = General.parse(general, arena_allocator);
     if (parsed.value.object.get("StatusBar")) |status_bar| self.status_bar = StatusBar.parse(status_bar, arena_allocator);
     if (parsed.value.object.get("Cache")) |cache| self.cache = Cache.parse(cache, arena_allocator);
