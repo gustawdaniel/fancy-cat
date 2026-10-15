@@ -120,4 +120,13 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     if (b.args) |args| run_cmd.addArgs(args);
     b.step("run", "Run the app").dependOn(&run_cmd.step);
+
+    const viewport_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/handlers/Viewport.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    b.step("test", "Run unit tests").dependOn(&b.addRunArtifact(viewport_tests).step);
 }

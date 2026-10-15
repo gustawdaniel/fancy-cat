@@ -59,13 +59,17 @@ pub fn reloadDocument(self: *Self) !void {
     }
 }
 
-pub fn renderPage(
+pub fn computeView(
     self: *Self,
     page_number: u16,
     window_width: u32,
     window_height: u32,
-) !types.EncodedImage {
-    return try self.pdf_handler.renderPage(page_number, window_width, window_height);
+) !types.View {
+    return try self.pdf_handler.computeView(page_number, window_width, window_height);
+}
+
+pub fn renderRegion(self: *Self, page_number: u16, region: types.Rect) !types.EncodedImage {
+    return try self.pdf_handler.renderRegion(page_number, region);
 }
 
 pub fn zoomIn(self: *Self, multiplier: f32) void {

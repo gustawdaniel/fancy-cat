@@ -5,6 +5,8 @@ const CommandMode = @import("modes/CommandMode.zig");
 const fzwatch = @import("fzwatch");
 const Config = @import("config/Config.zig");
 const DocumentHandler = @import("handlers/DocumentHandler.zig");
+const types = @import("handlers/types.zig");
+const Viewport = @import("handlers/Viewport.zig");
 const Cache = @import("./Cache.zig");
 const ReloadIndicatorTimer = @import("services/ReloadIndicatorTimer.zig");
 const History = @import("services/History.zig");
@@ -42,7 +44,11 @@ pub const Context = struct {
     history: History,
     reload_page: bool,
     cache: Cache,
-    should_check_cache: bool,
+    // key and region of the image in `current_page`; scrolling within the
+    // region only moves `current_clip`
+    current_key: ?Cache.Key,
+    current_region: types.Rect,
+    current_clip: types.Rect,
     reload_indicator_timer: ReloadIndicatorTimer,
     current_reload_indicator_state: ReloadIndicatorState,
     reload_indicator_active: bool,
@@ -92,7 +98,9 @@ pub const Context = struct {
             .history = history,
             .reload_page = true,
             .cache = Cache.init(allocator, config, vx, &tty),
-            .should_check_cache = config.cache.enabled,
+            .current_key = null,
+            .current_region = undefined,
+            .current_clip = undefined,
             .reload_indicator_timer = reload_indicator_timer,
             .current_reload_indicator_state = .idle,
             .reload_indicator_active = false,
@@ -207,7 +215,6 @@ pub const Context = struct {
     }
 
     pub fn resetCurrentPage(self: *Self) void {
-        self.should_check_cache = self.config.cache.enabled;
         self.reload_page = true;
     }
 
@@ -233,11 +240,13 @@ pub const Context = struct {
             .winsize => |ws| {
                 try self.vx.resize(self.allocator, self.tty.writer(), ws);
                 self.cache.clear();
+                self.current_key = null;
                 self.reload_page = true;
             },
             .file_changed => {
                 try self.document_handler.reloadDocument();
                 self.cache.clear();
+                self.current_key = null;
                 self.reload_page = true;
                 if (self.reload_indicator_active) {
                     if (self.config.general.progress_bar) try self.tty.writer().print("\x1b]9;4;1;100\x07", .{});
@@ -252,58 +261,66 @@ pub const Context = struct {
         }
     }
 
-    pub fn getPage(
-        self: *Self,
-        page_number: u16,
-        window_width: u32,
-        window_height: u32,
-    ) !vaxis.Image {
-        const cache_key = Cache.Key{
+    fn regionKey(self: *Self, page_number: u16, region: types.Rect) Cache.Key {
+        return .{
             .colorize = self.config.general.colorize,
             .page = page_number,
             .width_mode = self.document_handler.getWidthMode(),
-
-            // Scale zoom and position as integers with three digits of precision for use in key
+            // Scale zoom as an integer with three digits of precision for use in key
             .zoom = @as(u32, @intFromFloat(self.document_handler.getActiveZoom() * 1000.0)),
-            .x_offset = @as(i32, @intFromFloat(self.document_handler.getXOffset() * 1000.0)),
-            .y_offset = @as(i32, @intFromFloat(self.document_handler.getYOffset() * 1000.0)),
+            .x_offset = @intCast(region.x),
+            .y_offset = @intCast(region.y),
         };
+    }
 
-        if (self.should_check_cache) {
-            if (self.cache.get(cache_key)) |cached| {
-                self.should_check_cache = false;
-                return cached.image;
-            }
+    // Shows the visible part of the page. The terminal keeps the rendered
+    // region, so scrolling within it only changes the clip.
+    fn updatePage(self: *Self, page_number: u16, window_width: u32, window_height: u32) !void {
+        const view = try self.document_handler.computeView(page_number, window_width, window_height);
+
+        const reuse = if (self.current_key) |key|
+            std.meta.eql(key, self.regionKey(page_number, self.current_region)) and
+                Viewport.contains(self.current_region, view.visible)
+        else
+            false;
+
+        if (!reuse) {
+            const region = Viewport.chooseRegion(view);
+            const key = self.regionKey(page_number, region);
+
+            const cached = if (self.config.cache.enabled) self.cache.get(key) else null;
+            self.current_page = if (cached) |c| c.image else image: {
+                const encoded_image = try self.document_handler.renderRegion(page_number, region);
+                defer self.allocator.free(encoded_image.base64);
+
+                const image = try self.vx.transmitPreEncodedImage(
+                    self.tty.writer(),
+                    encoded_image.base64,
+                    encoded_image.width,
+                    encoded_image.height,
+                    .rgb,
+                );
+                if (self.config.cache.enabled) _ = try self.cache.put(key, .{ .image = image });
+                break :image image;
+            };
+            self.current_key = key;
+            self.current_region = region;
         }
 
-        const encoded_image = try self.document_handler.renderPage(
-            page_number,
-            window_width,
-            window_height,
-        );
-        defer self.allocator.free(encoded_image.base64);
-
-        const image = try self.vx.transmitPreEncodedImage(
-            self.tty.writer(),
-            encoded_image.base64,
-            encoded_image.width,
-            encoded_image.height,
-            .rgb,
-        );
-
-        if (self.should_check_cache) {
-            _ = try self.cache.put(cache_key, .{ .image = image });
-            self.should_check_cache = false;
-        }
-
-        return image;
+        self.current_clip = .{
+            .x = view.visible.x - self.current_region.x,
+            .y = view.visible.y - self.current_region.y,
+            .width = view.visible.width,
+            .height = view.visible.height,
+        };
     }
 
     pub fn drawCurrentPage(self: *Self, win: vaxis.Window) !void {
+        const pix_per_col = try std.math.divCeil(u16, win.screen.width_pix, win.screen.width);
+        const pix_per_row = try std.math.divCeil(u16, win.screen.height_pix, win.screen.height);
+
         if (self.reload_page) {
             const winsize = try vaxis.Tty.getWinsize(self.tty.fd);
-            const pix_per_col = try std.math.divCeil(u16, win.screen.width_pix, win.screen.width);
-            const pix_per_row = try std.math.divCeil(u16, win.screen.height_pix, win.screen.height);
             const x_pix = winsize.cols * pix_per_col;
             var y_pix = winsize.rows * pix_per_row;
             if (self.config.status_bar.enabled) {
@@ -312,29 +329,32 @@ pub const Context = struct {
                 y_pix -|= 1 * pix_per_row;
             }
 
-            self.current_page = try self.getPage(
-                self.document_handler.getCurrentPageNumber(),
-                x_pix,
-                y_pix,
-            );
+            try self.updatePage(self.document_handler.getCurrentPageNumber(), x_pix, y_pix);
 
             self.reload_page = false;
         }
 
         if (self.current_page) |img| {
-            const dims = try img.cellSize(win);
-            const x_off = (win.width - dims.cols) / 2;
-            var y_off = (win.height - dims.rows) / 2;
+            const clip = self.current_clip;
+            const cols: u16 = @intCast(try std.math.divCeil(u32, clip.width, pix_per_col));
+            const rows: u16 = @intCast(try std.math.divCeil(u32, clip.height, pix_per_row));
+            const x_off = (win.width -| cols) / 2;
+            var y_off = (win.height -| rows) / 2;
             if (self.config.status_bar.enabled) {
                 y_off -|= 1; // room for status bar
             }
             const center = win.child(.{
                 .x_off = x_off,
                 .y_off = y_off,
-                .width = dims.cols,
-                .height = dims.rows,
+                .width = cols,
+                .height = rows,
             });
-            try img.draw(center, .{ .scale = .contain });
+            try img.draw(center, .{ .clip_region = .{
+                .x = @intCast(clip.x),
+                .y = @intCast(clip.y),
+                .width = @intCast(clip.width),
+                .height = @intCast(clip.height),
+            } });
         }
     }
 
